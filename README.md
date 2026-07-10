@@ -1,69 +1,66 @@
-## Workflow
+# Fraud Project TH
 
-Ghseet Link: https://docs.google.com/spreadsheets/d/1Pcq9g05IxxtKSkdYEn19FSZkNd1J0y30LzQZ7k4lwJU/edit?gid=1920223642#gid=1920223642
+## Overview
+This Apps Script project is used to analyze suspicious-player behavior for the Thailand market and surface likely fraud or abuse patterns in Google Sheets. It pulls data from BigQuery, computes percentile-based thresholds, and writes the results into several reporting sheets for fraud team to review.
+
+The project is designed for a Google Sheets-based workflow with Apps Script automation. It is currently configured for the Thailand market with the country prefix `TH` and uses BigQuery tables under the `kz-dp-prod` project.
 
 ## Owner / PIC
 - Michelle — michellemy0051@kzgroup.biz (owner)
 - Kin — pham0003@kzgroup.biz (backup PIC)
 
-## Purpose
-This Apps Script project identifies and reports potentially suspicious players in Thailand (Timezone: GMT+7). It runs BigQuery-based analytics, computes percentile thresholds, and writes filtered and aggregated results into Google Sheets for operator review. All amounts are expressed in THB.
+## Main purpose
+The workflow identifies users who may be involved in suspicious activity by combining:
+- deposit and withdrawal behavior,
+- betting / turnover patterns,
+- registration speed and brand spread,
+- percentile-based risk thresholds,
+- manual review outcomes stored in the `User_Result` sheet.
 
-Primary filters used to surface users include:
-- Low win/loss ratio (example threshold: ≤ 0.1)
-- Low recent turnover (past 2 months) relative to thresholds computed from percentiles
+All monetary values are handled in THB.
 
-Additional risk indicators include:
-- High number of successful deposits (> 10) with little betting activity
-- High deposit attempts (> 20) combined with a low deposit success ratio (≤ 0.1)
-- High account registration rate in a short time (e.g., ≥ 10 registrations/day)
-- High number of distinct registered brands
+## Main sheets used by the workflow
+- `Suspicious_Player` — main operator-facing report sheet.
+- `Percentile_phone_email` — percentile threshold output sheet.
+- `Raw_Lt_phone_email` — raw details of extracted dataset.
+- `User_Result` — manual review and exclusion results used to suppress or monitor users.
 
-Result prioritisation:
-1. Users with lifetime turnover (`ltTurnover`) below 1 are listed first.
-2. Within the same `ltTurnover` bucket, users are ordered by recent turnover (ascending).
+## Current automation flow
+1. The Apps Script reads date inputs from the relevant report sheet (`B3` and `B4`).
+2. It runs BigQuery queries to pull member, deposit, withdrawal, promotion, turnover, and session data.
+3. Percentile thresholds are calculated and written to the percentile sheet.
+4. The raw and report sheets are populated with risk metrics and categorization results.
+5. Operators can review flagged users and update the `User_Result` sheet for future exclusions or monitoring.
 
-## Suspicious-player categorisation logic
+## Key Apps Script files
+- `const.js` — shared constants such as project IDs, country prefix, timezone offset, and minimum amount values.
+- `Utils.js` — helper functions for date formatting, BigQuery streaming, member-group mapping, and sheet formatting.
+- `Button.js` — web app entry points and button-driven automation helpers.
+- `Suspicious_Player.js` — main suspicious-player report generation and snapshot sheet creation.
+- `phone_email_lt_percentile.js` — percentile workflow for the lifetime/raw analysis flow.
+- `phone_email_lt_raw_data.js` — raw-data workflow for the long-term analysis flow.
+- `phone_email_lt_sus_player.js` — categorization and review logic for the lifetime analysis flow.
+- `duplicate_replace_sheet.js` — creates a copy/snapshot of the suspicious-player sheet for historical reporting.
 
-| Category | When to use | Core signals | Example criteria |
-|---|---:|---|---|
-| Watchlist | High deposit attempts but little successful play | deposit attempts high, low deposit success, low turnover | deposit attempts ≥ 20; deposit success ratio ≤ 10%; turnover ≤ 1; win/loss ≤ 10% |
-| Watchlist | Many brands but low activity | brand count high, low turnover | brand count ≥ 25; turnover ≤ 1; win/loss ≤ 10% |
-| Suspicious | Deposited but minimal betting | deposit amount > 0, very low bets | deposit amount > 0; turnover ≤ 1.5; win/loss ≤ 5% |
-| Suspicious | Low deposit success rate with many timeouts | low success ratio, timeout-dominated failures | deposit success ratio ≤ 10%; ≥ 80% failed deposits are timeouts; turnover ≤ 1.5 |
-| Suspicious | Many brands but low betting | high brand usage, low play | brand count ≥ 20; turnover ≤ 1.5; win/loss ≤ 5% |
+## Available actions
+The web app endpoint in `Button.js` supports the following actions:
+- `duplicate_sheet`
 
-## Workflow
-- Source: BigQuery realtime tables (e.g. kz-dp-prod.kz_pg_to_bq_realtime.*) queried from Apps Script.
-- Processing: Apps Script SQL runners compute percentiles, aggregate lifetime metrics, and classify users.
-- Output: Results written to Google Sheets tabs for operator review and further action.
 
-## Tabs (important)
-- `Suspicious_Player` — reduced reporting view of flagged users and status cells used by operators.
-- `Percentile_phone_email` — percentile thresholds and summary metrics used to compute decision cutoffs.
-- `Raw_Lt_phone_email` — full per-phone/email aggregated dataset (lifetime / long-term metrics) for detailed analysis.
-- `RT_Raw_Data_v4`, `RT_Report_v4`, `User_Result` — supporting raw/reporting sheets used by workflows.
+These are used by the Apps Script UI/button wrappers to trigger the main processing routines.
 
-## Key scripts / triggers
-- `Button.js` exposes `doGet(e)` webapp endpoints and helper functions (short/async task runners) used by UI buttons.
-- Percentile & classification: `Percentile_Phone.js`, `Percentile_Sus_Phone_Email.js`, and related helper scripts perform the BigQuery queries and sheet writes.
-- `duplicate_replace_sheet.js` and `phone_email_lt_sus_player.js` contain helper tasks for creating snapshot sheets and categorisation pipelines.
+## Prerequisites and permissions
+- Apps Script project with BigQuery advanced service enabled.
+- OAuth scopes for BigQuery, Drive, Spreadsheets, UrlFetch, and ScriptApp.
+- The executing Apps Script account must have access to the target Google Sheets and the BigQuery datasets used by the queries.
 
-## Prerequisites & permissions
-- BigQuery advanced service enabled in Apps Script (see `appsscript.json` — BigQuery is enabled).
-- OAuth scopes required: BigQuery, Drive, Spreadsheets, UrlFetch, ScriptApp (listed in `appsscript.json`).
-- The Apps Script deployment must run with an account that has access to the target Sheets and the `kz-dp-prod` BigQuery project.
+## Troubleshooting
+- Check the status cells such as `C4`, `C5`, or `C6` on the relevant report sheet for run status.
+- Review Apps Script execution logs for BigQuery query failures or unexpected runtime errors.
+- Confirm that the sheet names referenced by the scripts still exist and match the current workbook.
+- Validate that the deployment/web app is active if the button-based actions are not responding.
 
-## How to run / common operator actions
-- Trigger from the Google Sheet UI menu or call the webapp `doGet` endpoint with an `action` parameter (see `Button.js`). Typical actions: `refresh_hardcoded_data`, `duplicate_sheet`.
-- For long tasks the project uses time-based triggers to queue and run background jobs (see functions `startAsyncTask` / `runShortTask`).
-
-## Troubleshooting & signals
-- Status cells (e.g., `C4`, `C5`, `C6`) show `RUNNING`, `COMPLETED`, or `ERROR` and are the first place to check.
-- Check Apps Script execution logs for stack traces and SQL logged queries.
-- If sheets are not populated, confirm Apps Script webapp deployment and that the executing account has BigQuery access.
-
-## TODO(owner)
-- Confirm the deployed webapp URL and paste it here: `TODO(owner): webapp URL`.
-- Document which Google Sheet IDs are the canonical control and result files: `TODO(owner): control sheet URL`.
-- Review and confirm exact numeric thresholds (percentile indexes and static thresholds) used in the SQL — replace example numbers with the official values if different.
+## Notes
+- The project currently uses the Thailand market configuration and BigQuery tables under the `kz-dp-prod` environment.
+- The workflow is still evolving, so some scripts are legacy/alternative paths that may overlap with the newer RT-based flow.
+- Review and update threshold values in the sheet cells if the business rules change.
